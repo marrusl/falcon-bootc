@@ -9,6 +9,42 @@ Configuration for creating a bootc-based image with the Falcon sensor installed.
 This is an example that users should adapt to their bootc workflow. The resulting image will be
 associated with a specific customer ID (CID). Upon startup, the host will generate a new agent ID (AID).
 
+## About this branch
+
+This branch makes `/opt/CrowdStrike` writable with an ostree state overlay instead of
+relocating the tree into `/var/opt`. The sensor's agent ID and its cloud-delivered kernel
+module channel files persist as before; the sensor binaries now track the image, so a host
+that takes a new image gets the sensor version that image was built with.
+
+**This has not been run with a real Falcon sensor.** The overlay itself is boot-tested on
+RHEL 9.6 EUS and RHEL 10.2, but whether a cloud-pushed sensor update behaves correctly in an
+overlay is an open question. Treat it as a proposal, not a supported configuration.
+
+See [DESIGN.md](DESIGN.md) for why this approach, what was tested, and the open questions.
+
+### What you need to know to run it
+
+- **Requires RHEL 9.6 or later, or RHEL 10.** Earlier RHEL 9 builds lack an ostree fix
+  without which the overlay does not mount. On 9.6, use the EUS image.
+- **`/opt/CrowdStrike` becomes root-only.** The overlay changes the directory to mode 0700
+  owned by root, so processes that are not root can no longer read it. The sensor runs as
+  root and is unaffected, but a log shipper, backup job or monitoring agent that reads that
+  path will start failing. Check before deploying.
+- Everything else under `/opt` stays read-only. The overlay is scoped to the sensor's own
+  directory.
+- **Do not install with `--composefs-backend`.** On the native composefs backend the overlay
+  never mounts, `/opt/CrowdStrike` stays read-only, and nothing reports it, so the sensor
+  fails at runtime instead of at install. The default ostree backend is what this needs. See
+  [DESIGN.md](DESIGN.md).
+- Local edits to files that came from the image are reverted when the host boots into a new
+  image, without a log entry. Put anything you need to keep somewhere else.
+- **The image sets the sensor version at each upgrade.** After an OS upgrade the host runs
+  the sensor the image was built with, and your sensor update policy then moves it to the
+  policy version on the next check-in, as it would for any host. The running version ends up
+  where it does today; the difference is that the image sets the starting point. Each
+  correction costs a sensor restart, so keeping the RPM in your build inputs current avoids
+  the churn.
+
 ## Support
 
 falcon-bootc is an open source project, not a CrowdStrike product. As such, it carries no formal support, expressed or implied.
@@ -50,34 +86,19 @@ subscription-manager register
 # enter your Red Hat login
 ```
 
-## Base image
-
-The `Containerfile` builds against **the latest supported RHEL 9** by default, and
-**RHEL 10** is supported too. Select it with a build argument:
-
-```bash
-podman build --build-arg FALCON_CID=$FALCON_CID \
-  --build-arg BASE_IMAGE=registry.redhat.io/rhel10/rhel-bootc:latest \
-  -t falcon-bootc-demo:latest .
-```
-
-The SELinux relabeling step is skipped automatically on RHEL 10, where the distro policy
-already equates `/var/opt` with `/opt`.
-
-Tracking `latest` rather than pinning a minor version is deliberate. A pinned minor
-eventually leaves support, its repositories stop receiving updates, and nothing in the build
-can pull a fix in after that. This file previously pinned 9.6, which was current when it was
-set and has since aged out.
-
-If you do need to stay on a specific older minor, use that release's EUS image
-(`registry.redhat.io/rhel9-eus/rhel-9.6-bootc`, for example) rather than the mainline tag for
-a superseded minor. EUS tags keep receiving updates; superseded mainline tags do not.
-
 ## Building
+
+The `Containerfile` builds against a RHEL 9 base by default. A RHEL 10 base also works:
+change the `FROM` line. The SELinux relabeling step is skipped automatically on RHEL 10,
+where the distro policy already equates `/var/opt` with `/opt`.
 
 1. Download a GPG key and RPM that matches the system's architecture and place them in `assets`. Note: the `Containerfile` installs any `*.gpg` and `*.rpm` file found, so ensure the files match this convention.
 2. Retrieve your CID and set as as environment variable: `FALCON_CID=abcd1234`
 3. Build the container image: `podman build --build-arg FALCON_CID=$FALCON_CID -t falcon-bootc-demo:latest .`
+   To build against RHEL 10 instead of the default RHEL 9, add
+   `--build-arg BASE_IMAGE=registry.redhat.io/rhel10/rhel-bootc:latest`. The base tracks the
+   latest supported minor rather than pinning one, so it does not quietly age out of
+   support; if you must stay on a specific older minor, use that release's EUS image.
 4. Build the bootable image:
 
 ```
