@@ -9,6 +9,9 @@ RUN <<EOF
 set -euxo pipefail
 
 # install falcon sensor
+# An empty assets/ otherwise fails as "import read failed(2)" on the unexpanded
+# glob, which does not say what is missing.
+ls /tmp/assets/*.rpm >/dev/null 2>&1 || { echo "No sensor RPM in assets/. Download one from the Falcon console." >&2; exit 1; }
 rpm --import /tmp/assets/*.gpg
 dnf -y install /tmp/assets/*.rpm
 
@@ -44,6 +47,10 @@ sed -i 's/Restart=no/Restart=on-failure/' /usr/lib/systemd/system/falcon-sensor.
 # configure and enable sensor
 /opt/CrowdStrike/falconctl -s --cid=$FALCON_CID
 systemctl enable falcon-sensor
+
+# The sensor version is whatever RPM is in assets/; a rebuild does not pick up a
+# newer one. Gate on this in your pipeline: rpm -q falcon-sensor
+rpm -q falcon-sensor
 
 # cleanup
 dnf clean all
