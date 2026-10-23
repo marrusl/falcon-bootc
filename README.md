@@ -50,11 +50,30 @@ subscription-manager register
 # enter your Red Hat login
 ```
 
-## Building
+## Base image
 
-The `Containerfile` builds against a RHEL 9 base by default. A RHEL 10 base also works:
-change the `FROM` line. The SELinux relabeling step is skipped automatically on RHEL 10,
-where the distro policy already equates `/var/opt` with `/opt`.
+The `Containerfile` builds against **the latest supported RHEL 9** by default, and
+**RHEL 10** is supported too. Select it with a build argument:
+
+```bash
+podman build --build-arg FALCON_CID=$FALCON_CID \
+  --build-arg BASE_IMAGE=registry.redhat.io/rhel10/rhel-bootc:latest \
+  -t falcon-bootc-demo:latest .
+```
+
+The SELinux relabeling step is skipped automatically on RHEL 10, where the distro policy
+already equates `/var/opt` with `/opt`.
+
+Tracking `latest` rather than pinning a minor version is deliberate. A pinned minor
+eventually leaves support, its repositories stop receiving updates, and nothing in the build
+can pull a fix in after that. This file previously pinned 9.6, which was current when it was
+set and has since aged out.
+
+If you do need to stay on a specific older minor, use that release's EUS image
+(`registry.redhat.io/rhel9-eus/rhel-9.6-bootc`, for example) rather than the mainline tag for
+a superseded minor. EUS tags keep receiving updates; superseded mainline tags do not.
+
+## Building
 
 1. Download a GPG key and RPM that matches the system's architecture and place them in `assets`. Note: the `Containerfile` installs any `*.gpg` and `*.rpm` file found, so ensure the files match this convention.
 2. Retrieve your CID and set as as environment variable: `FALCON_CID=abcd1234`

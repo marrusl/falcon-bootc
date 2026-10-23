@@ -1,5 +1,9 @@
-FROM registry.redhat.io/rhel9/rhel-bootc:9.6
-# FROM quay.io/centos-bootc/centos-bootc:stream9
+# Base image. Override to build on RHEL 10:
+#   --build-arg BASE_IMAGE=registry.redhat.io/rhel10/rhel-bootc:latest
+#   --build-arg BASE_IMAGE=quay.io/centos-bootc/centos-bootc:stream9
+# Tracks latest rather than pinning a minor version; see README.
+ARG BASE_IMAGE=registry.redhat.io/rhel9/rhel-bootc:latest
+FROM ${BASE_IMAGE}
 
 ARG FALCON_CID
 
